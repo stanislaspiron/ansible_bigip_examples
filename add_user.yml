@@ -55,3 +55,4 @@
       overwrite_config: yes
     when: 
     - is_active
+    - failover_device_group != 'None'
