@@ -1,0 +1,56 @@
+---
+
+- hosts: "{{ target }}"
+  any_errors_fatal: true
+  connection: local
+  gather_facts: false
+  collections:
+  - f5networks.f5_modules
+  environment:
+    https_proxy: ''
+    http_proxy: ''
+    
+  vars:
+    bigip_provider:
+      user: "{{ user }}"
+      password: "{{ password }}"
+      server: "{{ ansible_host }}"
+      validate_certs: false
+      no_f5_teem: yes
+    is_active: "{{ bigip_gather_var.devices | selectattr('self', 'equalto', 'yes') | map(attribute='failover_state') | first == 'active' }}"
+    failover_device_group: "{{ bigip_gather_var.device_groups | selectattr('type', 'equalto', 'sync-failover')  | map(attribute='name') | first | default ('None') }}"
+
+  tasks:
+  - name: Get bigip config Information
+    bigip_device_info:
+      gather_subset: 
+      - devices
+      - device-groups
+      provider: "{{ bigip_provider }}"
+    register: bigip_gather_var
+    retries: 3
+    delay: 3
+ 
+  - name: Add Management security rules
+    bigip_user:
+      username_credential: stan
+      password_credential: Stan#F5Networks
+      full_name: "stanislas F5"
+      partition_access:
+      - all:admin
+      shell: bash
+      update_password: on_create
+      state: present
+      provider: "{{ bigip_provider }}"
+    register: user_new
+    when: 
+    - is_active
+
+  - name: Sync configuration from device to group
+    bigip_configsync_action:
+      device_group: "{{ failover_device_group }}"
+      sync_device_to_group: true
+      provider: "{{ bigip_provider }}"
+      overwrite_config: yes
+    when: 
+    - is_active
