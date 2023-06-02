@@ -15,6 +15,7 @@
       user: "{{ user }}"
       password: "{{ password }}"
       server: "{{ ansible_host }}"
+      server_port: 443
       validate_certs: false
       no_f5_teem: yes
     is_active: "{{ bigip_gather_var.devices | selectattr('self', 'equalto', 'yes') | map(attribute='failover_state') | first == 'active' }}"
