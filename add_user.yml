@@ -32,7 +32,7 @@
     retries: 3
     delay: 3
  
-  - name: Add Management security rules
+  - name: Add new user
     bigip_user:
       username_credential: stan
       password_credential: Stan#F5Networks
