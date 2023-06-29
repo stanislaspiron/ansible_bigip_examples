@@ -1,0 +1,122 @@
+---
+
+- name: Update Common/Shared partition
+  hosts: "{{ target }}"
+  gather_facts: no
+  force_handlers: True
+  connection: local
+  vars:
+    bigip_token: "{{ login_result.json.token.token }}"
+    policies: "{{ get_policies.json[items] }}"
+
+  tasks:
+  # Login to BigIP and retreive token ID
+  - name: Login to BigIP
+    #debugger: always
+    no_log: true
+    uri:
+      url: https://{{ ansible_host }}/mgmt/shared/authn/login
+      method: POST
+      body: 
+        username: "{{ ansible_user }}"
+        password: "{{ ansible_password }}"
+        loginProviderName: "tmos"
+      return_content: yes
+      validate_certs: no
+      status_code: 200
+      timeout: 30
+      body_format: json
+    register: login_result
+    retries: 30
+    delay: 10
+    until: login_result.status is defined and login_result.status == 200
+    changed_when: false
+    notify:
+    - bigip-logout
+
+  # update token timeout to 1 hour
+  - name: update timeout to 1H
+    uri:
+      url: https://{{ ansible_host }}/mgmt/shared/authz/tokens/{{ bigip_token }}
+      method: PATCH
+      headers:
+          X-F5-Auth-Token: "{{ bigip_token }}"
+      body: '{"timeout":"3600"}'
+      validate_certs: no
+      status_code: 200
+      timeout: 30
+      body_format: json
+
+  - name: GET ASM policies
+    uri:
+      url: https://{{ ansible_host }}/mgmt/tm/asm/policies?$filter=type+eq+security+and+enforcementMode+eq+blocking&$select=id,name
+      method: GET
+      return_content: yes
+      headers:
+          X-F5-Auth-Token: "{{ bigip_token }}"
+      validate_certs: no
+      status_code: 200, 202
+      timeout: 30
+      body_format: json
+    register: get_policies
+    retries: 10
+    delay: 60
+    until: 
+    - get_policies.status is defined
+    - get_policies.status == 200
+
+  - name: update ASM policies
+    uri:
+      url: https://{{ ansible_host }}/mgmt/tm/asm/policies/{{ item.id }}/signatures?$filter=hasSuggestions+eq+false+and+wasUpdatedWithinEnforcementReadinessPeriod+eq+false
+      method: POST
+      return_content: yes
+      headers:
+          X-F5-Auth-Token: "{{ bigip_token }}"
+      body:
+        performStaging: "{{ performStaging | default ( False ) }}"
+      validate_certs: no
+      status_code: 200, 202
+      timeout: 30
+      body_format: json
+    register: update_result
+    retries: 10
+    delay: 60
+    until: 
+    - update_result.status is defined
+    - update_result.status in [200, 202]
+    loop: policies
+
+  - name: update ASM policies
+    uri:
+      url: https://{{ ansible_host }}/mgmt/tm/asm/policies/{{ item.id }}/mgmt/tm/asm/tasks/apply-policy
+      method: POST
+      return_content: yes
+      headers:
+          X-F5-Auth-Token: "{{ bigip_token }}"
+      body:
+        policyReference : 
+          link : "https://localhost/mgmt/tm/asm/policies/{{ item.id }}"
+      validate_certs: no
+      status_code: 200, 202
+      timeout: 30
+      body_format: json
+    register: apply_result
+    retries: 10
+    delay: 60
+    until: 
+    - apply_result.status is defined
+    - apply_result.status in [200, 202]
+    loop: policies
+
+  handlers:
+  # Logout From BigIP ato prevent too many active session (Max 100 is allowed by TMOS)
+  - name: bigip-logout
+    uri:
+      url: https://{{ ansible_host }}/mgmt/shared/authz/tokens/{{ bigip_token }}
+      method: DELETE
+      headers:
+          X-F5-Auth-Token: "{{ bigip_token }}"
+      validate_certs: no
+      status_code: 200
+      timeout: 30
+      body_format: json 
