@@ -46,7 +46,7 @@
  
   - name: GET ASM policies
     uri:
-      url: https://{{ ansible_host }}/mgmt/tm/asm/policies?$filter=type+eq+security+and+enforcementMode+eq+blocking&$select=id,name
+      url: https://{{ ansible_host }}/mgmt/tm/asm/policies?$filter=type+eq+security+and+enforcementMode+eq+blocking{{ addon_filter }}&$select=id,name
       method: GET
       return_content: yes
       headers:
@@ -60,7 +60,8 @@
     until:
     - get_policies.status is defined
     - get_policies.status == 200
- 
+    vars:
+      addon_filter: "{% if partitions is defined and partitions | length %}+and+partition+in+({{partitions | join(',') }}){% endif %}"
   - name: update ASM policies
     uri:
       url: https://{{ ansible_host }}/mgmt/tm/asm/policies/{{ item.id }}/signatures?$filter=hasSuggestions+eq+false+and+wasUpdatedWithinEnforcementReadinessPeriod+eq+false+and+performStaging+eq+true
@@ -84,7 +85,7 @@
     loop_control:
        label: '{{item.name}}'
  
-  - name: update ASM policies
+  - name: Apply ASM policies
     uri:
       url: https://{{ ansible_host }}/mgmt/tm/asm/policies/{{ item.id }}/mgmt/tm/asm/tasks/apply-policy
       method: POST
@@ -119,4 +120,3 @@
       status_code: 200
       timeout: 30
       body_format: json
- 
