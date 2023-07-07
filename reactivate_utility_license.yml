@@ -1,0 +1,114 @@
+---
+
+- name: Reactivate BIGIP license
+  hosts: "{{ targets }}"
+  any_errors_fatal: true
+  connection: local
+  gather_facts: false
+  collections:
+  - f5networks.f5_modules
+  environment:
+    https_proxy: ''
+    http_proxy: ''
+
+  vars:
+    bigip_provider:
+      user: "{{ ansible_user }}"
+      password: "{{ ansible_password }}"
+      server: "{{ ansible_host }}"
+      server_port: 443
+      validate_certs: false
+      no_f5_teem: yes
+
+    bigiq_provider:
+      user: "{{ bigiq_user }}"
+      password: "{{ bigiq_password }}"
+      server: "{{ bigiq_host }}"
+      server_port: 443
+      validate_certs: false
+      no_f5_teem: yes
+    is_active: "{{ bigip_gather_var.devices 
+      | selectattr('self', 'equalto', 'yes') 
+      | map(attribute='failover_state') 
+      | first == 'active' 
+    }}"
+
+  tasks:
+  - name: Get bigip config Information
+    bigip_device_info:
+      gather_subset: 
+      - devices
+      provider: "{{ bigip_provider }}"
+    register: bigip_gather_var
+    retries: 3
+    delay: 3
+
+  — name: Save initial state to prevent 
+    set_fact:
+      first_active: "{{ is_active }}"
+
+  - name: Register an unmanaged device
+    bigiq_utility_license_assignment:
+      key: "{{ ELA_KEY }}"
+      offering: "{{ ELA_OFFERING }}"
+      device: "{{ ansible_host }}"
+      managed: no
+      device_username: "{{ ansible_user }}"
+      device_password: "{{ ansible_password }}"
+      state: present
+      provider: "{{ bigiq_provider }}"
+    when:
+    - not is_active
+
+  - name: "Wait for BIG-IP to be ready, don't start checking for 20 seconds"
+    bigip_wait:
+      delay: 20
+      provider: "{{ bigip_provider }}"
+      type: "standard"
+    when:
+    - not is_active
+
+  - name: run sys failover standby on active member
+    bigip_command:
+     commands: run sys failover standby
+     provider: "{{ bigip_provider }}"
+    register: sys_failover_standby
+    when: 
+    - is_active
+
+  - name: Pause for 10 seconds to wait standby become active
+    pause:
+      seconds: 10
+    when: 
+    - is_active
+
+  - name: Get bigip config Information
+    bigip_device_info:
+      gather_subset: 
+      - devices
+      provider: "{{ bigip_provider }}"
+    register: bigip_gather_var
+    retries: 3
+    delay: 3
+
+  - name: Check if failover succeed
+    assert:
+      that:
+        - not is_active
+      fail_msg: Active member did not become standby
+      success_msg: Active member became standby
+    when:
+    - first_active
+
+  - name: Register an unmanaged device
+    bigiq_utility_license_assignment:
+      key: "{{ ELA_KEY }}"
+      offering: "{{ ELA_OFFERING }}"
+      device: "{{ ansible_host }}"
+      managed: no
+      device_username: "{{ ansible_user }}"
+      device_password: "{{ ansible_password }}"
+      state: present
+      provider: "{{ bigiq_provider }}"
+    when:
+    - not is_active
