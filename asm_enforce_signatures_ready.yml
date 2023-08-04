@@ -62,6 +62,7 @@
     - get_policies.status == 200
     vars:
       addon_filter: "{% if partitions is defined and partitions | length %}+and+partition+in+({{partitions | join(',') }}){% endif %}"
+
   - name: update ASM policies
     uri:
       url: https://{{ ansible_host }}/mgmt/tm/asm/policies/{{ item.id }}/signatures?$filter=hasSuggestions+eq+false+and+wasUpdatedWithinEnforcementReadinessPeriod+eq+false+and+performStaging+eq+true
@@ -81,6 +82,9 @@
     until:
     - update_result.status is defined
     - update_result.status in [200, 202]
+    changed_when:
+    - update_result.json.totalItems is defined
+    - update_result.json.totalItems != 0
     loop: "{{ policies }}"
     loop_control:
        label: '{{item.name}}'
