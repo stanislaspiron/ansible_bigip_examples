@@ -1,0 +1,139 @@
+---
+ 
+- name: Enforce ready to be enforced signatures
+  hosts: "{{ target }}"
+  gather_facts: no
+  connection: local
+  vars:
+    bigip_token: "{{ login_result.json.token.token }}"
+    policies: "{{ get_policies.json['items'] }}"
+    awx_description: 'Les signatures des policy WAF F5 DMZ dans les partitions suivantes ont été enforcées : "{{ partitions }}"'
+    awx_titre: "Application des signatures de sécurité sur les équipements WAF F5 sur la production"
+#  roles:
+#    - name: assyst
+ 
+  tasks:
+  # Login to BigIP and retreive token ID
+  - name: Login to BigIP
+    #debugger: always
+    no_log: true
+    uri:
+      url: https://{{ ansible_host }}/mgmt/shared/authn/login
+      method: POST
+      body:
+        username: "{{ ansible_user }}"
+        password: "{{ ansible_password }}"
+        loginProviderName: "tmos"
+      return_content: yes
+      validate_certs: no
+      status_code: 200
+      timeout: 30
+      body_format: json
+    register: login_result
+    retries: 30
+    delay: 10
+    until: login_result.status is defined and login_result.status == 200
+    changed_when: false
+ 
+  # update token timeout to 1 hour
+  - name: update timeout to 1H
+    uri:
+      url: https://{{ ansible_host }}/mgmt/shared/authz/tokens/{{ bigip_token }}
+      method: PATCH
+      headers:
+          X-F5-Auth-Token: "{{ bigip_token }}"
+      body: '{"timeout":"3600"}'
+      validate_certs: no
+      status_code: 200
+      timeout: 30
+      body_format: json
+ 
+  - name: GET ASM policies
+    uri:
+      url: https://{{ ansible_host }}/mgmt/tm/asm/policies?$filter=type+eq+security+and+enforcementMode+eq+blocking{{ addon_filter }}&$select=id,name,isModified
+      method: GET
+      return_content: yes
+      headers:
+          X-F5-Auth-Token: "{{ bigip_token }}"
+      validate_certs: no
+      status_code: 200, 202
+      timeout: 30
+    register: get_policies
+    retries: 10
+    delay: 60
+    until:
+    - get_policies.status is defined
+    - get_policies.status == 200
+    vars:
+      addon_filter: "{% if partitions is defined and partitions | length %}+and+partition+in+({{partitions | join(',') }}){% endif %}"
+
+  - name: update ASM policies
+    uri:
+      url: https://{{ ansible_host }}/mgmt/tm/asm/policies/{{ item.id }}/policy-builder
+      method: PATCH
+      return_content: yes
+      headers:
+          X-F5-Auth-Token: "{{ bigip_token }}"
+      body:
+        learningMode: "{{ learning_mode | default('manual') }}"
+      validate_certs: no
+      status_code: 200, 202
+      timeout: 30
+      body_format: json
+    register: update_result
+    retries: 10
+    delay: 60
+    until:
+    - update_result.status is defined
+    - update_result.status in [200, 202]
+#    changed_when:
+#    - update_result.json.totalItems is defined
+#    - update_result.json.totalItems != 0
+    loop: "{{ policies }}"
+    loop_control:
+       label: '{{item.name}}'
+ 
+  - name: Apply changed ASM policies with no existing changes
+    uri:
+      url: https://{{ ansible_host }}/mgmt/tm/asm/policies/{{ item.id }}/mgmt/tm/asm/tasks/apply-policy
+      method: POST
+      return_content: yes
+      headers:
+          X-F5-Auth-Token: "{{ bigip_token }}"
+      body:
+        policyReference :
+          link : https://localhost/mgmt/tm/asm/policies/{{ item.id }}
+      validate_certs: no
+      status_code: 200, 201, 202
+      timeout: 30
+      body_format: json
+    register: apply_result
+    retries: 10
+    delay: 60
+    until:
+    - apply_result.status is defined
+    - apply_result.status in [200, 201, 202]
+    loop: "{{ update_result.results | json_query('[?changed].item') }}"
+    # La ligne ci-dessus est identique a :
+    #loop: "{{ update_result.results | selectattr('changed', 'defined') | selectattr('changed', 'equalto', true ) | map(attribute='item') }}"
+    loop_control:
+       label: '{{item.name}}'
+    when: 
+    - item.isModified is defined
+    - not item.isModified
+    changed_when:
+    - apply_result.status is defined
+    - apply_result.status == 201
+
+  # Logout From BigIP ato prevent too many active session (Max 100 is allowed by TMOS)
+  - name: bigip-logout
+    uri:
+      url: https://{{ ansible_host }}/mgmt/shared/authz/tokens/{{ bigip_token }}
+      method: DELETE
+      headers:
+          X-F5-Auth-Token: "{{ bigip_token }}"
+      validate_certs: no
+      status_code: 200
+      timeout: 30
+      body_format: json
+ 
