@@ -7,6 +7,10 @@
   vars:
     bigip_token: "{{ login_result.json.token.token }}"
     policies: "{{ get_policies.json['items'] }}"
+    awx_description: 'Les signatures des policy WAF F5 DMZ dans les partitions suivantes ont été enforcées : "{{ partitions }}"'
+    awx_titre: "Application des signatures de sécurité sur les équipements WAF F5 sur la production"
+#  roles:
+#    - name: assyst
  
   tasks:
   # Login to BigIP and retreive token ID
@@ -46,7 +50,7 @@
  
   - name: GET ASM policies
     uri:
-      url: https://{{ ansible_host }}/mgmt/tm/asm/policies?$filter=type+eq+security+and+enforcementMode+eq+blocking{{ addon_filter }}&$select=id,name
+      url: https://{{ ansible_host }}/mgmt/tm/asm/policies?$filter=type+eq+security+and+enforcementMode+eq+blocking{{ addon_filter }}&$select=id,name,isModified
       method: GET
       return_content: yes
       headers:
@@ -89,7 +93,7 @@
     loop_control:
        label: '{{item.name}}'
  
-  - name: Apply ASM policies
+  - name: Apply changed ASM policies with no existing changes
     uri:
       url: https://{{ ansible_host }}/mgmt/tm/asm/policies/{{ item.id }}/mgmt/tm/asm/tasks/apply-policy
       method: POST
@@ -109,10 +113,18 @@
     until:
     - apply_result.status is defined
     - apply_result.status in [200, 201, 202]
-    loop: "{{ policies }}"
+    loop: "{{ update_result.results | json_query('[?changed].item') }}"
+    # La ligne ci-dessus est identique a :
+    #loop: "{{ update_result.results | selectattr('changed', 'defined') | selectattr('changed', 'equalto', true ) | map(attribute='item') }}"
     loop_control:
        label: '{{item.name}}'
- 
+    when: 
+    - item.isModified is defined
+    - not item.isModified
+    changed_when:
+    - apply_result.status is defined
+    - apply_result.status == 201
+
   # Logout From BigIP ato prevent too many active session (Max 100 is allowed by TMOS)
   - name: bigip-logout
     uri:
@@ -124,3 +136,4 @@
       status_code: 200
       timeout: 30
       body_format: json
+ 
