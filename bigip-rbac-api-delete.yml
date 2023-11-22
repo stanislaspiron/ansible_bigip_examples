@@ -72,7 +72,7 @@
 
   - name: Delete resource group
     uri:
-      url: https://{{ ansible_host }}/mgmt/shared/authz/resource-groups/{{ api_resource_group_result.json['items'] | selectattr('name', 'equalto', account_name + '_resources' ) | first }}
+      url: https://{{ ansible_host }}/mgmt/shared/authz/resource-groups/{{ api_resource_group_result.json['items'] | selectattr('name', 'equalto', account_name + '_resources' ) | map(attribute='id') | first }}
       method: DELETE
       return_content: yes
       headers:
