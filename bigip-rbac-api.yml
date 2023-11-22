@@ -58,7 +58,7 @@
         description: '{{account_name}}'
         partitionAccess:
         - name: all-partitions
-          role: operator
+          role: certificate-manager
       validate_certs: no
       status_code: 200, 202
       timeout: 30
@@ -118,16 +118,24 @@
       headers:
           X-F5-Auth-Token: "{{ bigip_token }}"
       body: 
-        name: '{{account_name}}_resources'
+        name: hrzResourceGroup
         resources:
         - restMethod: GET
-          resourceMask: /mgmt/tm/ltm/virtual/~Common~VS2
+          resourceMask: /mgmt/tm/ltm/profile/client-ssl
+        - restMethod: POST
+          resourceMask: /mgmt/tm/ltm/profile/client-ssl
         - restMethod: PATCH
-          resourceMask: /mgmt/tm/ltm/virtual/~Common~VS2
+          resourceMask: /mgmt/tm/ltm/profile/client-ssl/**
         - restMethod: GET
-          resourceMask: /mgmt/tm/ltm/virtual/VS2
-        - restMethod: PATCH
-          resourceMask: /mgmt/tm/ltm/virtual/VS2
+          resourceMask: /mgmt/tm/sys/file/ssl-cert/**
+        - restMethod: DELETE
+          resourceMask: /mgmt/tm/sys/file/ssl-cert/**
+        - restMethod: DELETE
+          resourceMask: /mgmt/tm/sys/file/ssl-key/**
+        - restMethod: POST
+          resourceMask: /mgmt/shared/file-transfer/uploads/**
+        - restMethod: POST
+          resourceMask: /mgmt/tm/sys/crypto/**
       validate_certs: no
       status_code: 200, 202
       timeout: 30
