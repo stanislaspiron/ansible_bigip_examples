@@ -91,12 +91,14 @@
   - name: UPDATE Resource Role iControl_REST_API_User
     uri:
       url: https://{{ ansible_host }}/mgmt/shared/authz/roles/iControl_REST_API_User
-      method: PATCH
+      method: PUT
       return_content: yes
       headers:
           X-F5-Auth-Token: "{{ bigip_token }}"
       body: 
         userReferences: "{{ api_user_result.json.userReferences | rejectattr('link', 'equalto', 'https://localhost/mgmt/shared/authz/users/' + account_name) }}"
+        resourceGroupReferences: "{{ api_user_result.json.resourceGroupReferences }}"
+        name: "{{ api_user_result.json.name }}"
       validate_certs: no
       status_code: 200, 202
       timeout: 30
@@ -164,7 +166,7 @@
   # Logout From BigIP to prevent too many active session (Max 100 is allowed by TMOS)
   - name: Logout from bigIP
     uri:
-      url: https://{{ ansible_host }}/mgmt/shared/authz/tokens/{{ bigip_token }}
+      url: https://{{ bigiq }}/mgmt/shared/authz/tokens/{{ bigip_token }}
       method: DELETE
       headers:
           X-F5-Auth-Token: "{{ bigip_token }}"
