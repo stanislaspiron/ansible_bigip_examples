@@ -53,15 +53,10 @@
       headers:
           X-F5-Auth-Token: "{{ bigip_token }}"
       validate_certs: no
-      status_code: 200, 202
+      status_code: 200, 202, 404
       timeout: 30
       body_format: json
     register: role_result
-    retries: 10
-    delay: 60
-    until: 
-    - role_result.status is defined
-    - role_result.status != 503
 
   - name: GET Resource group
     uri:
@@ -74,11 +69,6 @@
       status_code: 200, 202
       timeout: 30
     register: api_resource_group_result
-    retries: 10
-    delay: 60
-    until: 
-    - api_resource_group_result.status is defined
-    - api_resource_group_result.status != 503
 
   - name: Delete resource group
     uri:
@@ -88,16 +78,10 @@
       headers:
           X-F5-Auth-Token: "{{ bigip_token }}"
       validate_certs: no
-      status_code: 200, 202
+      status_code: 200, 202, 404
       timeout: 30
       body_format: json
     register: resource_group_result
-    retries: 10
-    delay: 60
-    until: 
-    - resource_group_result.status is defined
-    - resource_group_result.status != 503
-
 
   - name: Delete user
     uri:
@@ -107,16 +91,10 @@
       headers:
           X-F5-Auth-Token: "{{ bigip_token }}"
       validate_certs: no
-      status_code: 200, 202
+      status_code: 200, 202, 404
       timeout: 30
       body_format: json
     register: user_result
-    retries: 10
-    delay: 60
-    until: 
-    - user_result.status is defined
-    - user_result.status != 503
-
 
 
   # Logout From BigIP to prevent too many active session (Max 100 is allowed by TMOS)
