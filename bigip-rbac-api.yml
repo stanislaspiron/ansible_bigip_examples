@@ -1,0 +1,172 @@
+---
+
+- name: Configure RBAC for BIGIP API
+  hosts: "{{ target }}"
+  gather_facts: no
+  serial: 1
+  connection: local
+  vars:
+    bigip_token: "{{ login_result.json.token.token }}"
+    resource_id: "{{ resource_group_result.json.id }}"
+
+  tasks:
+    # Login to BigIP and retreive token ID
+  - name: Login to BigIP
+    no_log: True
+    #debugger: always
+    uri:
+      url: https://{{ ansible_host }}/mgmt/shared/authn/login
+      method: POST
+      body: 
+        username: "{{ ansible_user }}"
+        password: "{{ ansible_password }}"
+        loginProviderName: "tmos"
+      return_content: yes
+      validate_certs: no
+      status_code: 200
+      timeout: 30
+      body_format: json
+    register: login_result
+    retries: 30
+    delay: 10
+    until: login_result.status is defined and login_result.status == 200
+    changed_when: false
+
+  # update token timeout to 1 hour
+  - name: update timeout to 1H
+    uri:
+      url: https://{{ ansible_host }}/mgmt/shared/authz/tokens/{{ bigip_token }}
+      method: PATCH
+      headers:
+          X-F5-Auth-Token: "{{ bigip_token }}"
+      body: '{"timeout":"3600"}'
+      validate_certs: no
+      status_code: 200
+      timeout: 30
+      body_format: json
+
+  - name: Create user
+    uri:
+      url: https://{{ ansible_host }}/mgmt/tm/auth/user
+      method: POST
+      return_content: yes
+      headers:
+          X-F5-Auth-Token: "{{ bigip_token }}"
+      body: 
+        name: '{{account_name}}'
+        password: '{{account_password}}'
+        description: '{{account_name}}'
+        partitionAccess:
+        - name: all-partitions
+          role: operator
+      validate_certs: no
+      status_code: 200, 202
+      timeout: 30
+      body_format: json
+    register: user_result
+    retries: 10
+    delay: 60
+    until: 
+    - user_result.status is defined
+    - user_result.status != 503
+
+  - name: GET Resource Role iControl_REST_API_User
+    uri:
+      url: https://{{ ansible_host }}/mgmt/shared/authz/roles/iControl_REST_API_User
+      method: GET
+      return_content: yes
+      headers:
+          X-F5-Auth-Token: "{{ bigip_token }}"
+      validate_certs: no
+      status_code: 200, 202
+      timeout: 30
+      body_format: json
+    register: api_user_result
+    retries: 10
+    delay: 60
+    until: 
+    - api_user_result.status is defined
+    - api_user_result.status != 503
+
+  - name: UPDATE Resource Role iControl_REST_API_User
+    uri:
+      url: https://{{ ansible_host }}/mgmt/shared/authz/roles/iControl_REST_API_User
+      method: PATCH
+      return_content: yes
+      headers:
+          X-F5-Auth-Token: "{{ bigip_token }}"
+      body: 
+        userReferences: "{{ api_user_result.json.userReferences | rejectattr('link', 'equalto', 'https://localhost/mgmt/shared/authz/users/' + account_name) }}"
+      validate_certs: no
+      status_code: 200, 202
+      timeout: 30
+      body_format: json
+    register: api_user_patch_result
+    retries: 10
+    delay: 60
+    until: 
+    - api_user_patch_result.status is defined
+    - api_user_patch_result.status != 503
+
+  - name: Create resource group
+      url: https://{{ ansible_host }}/mgmt/shared/authz/resource-groups
+      method: POST
+      return_content: yes
+      headers:
+          X-F5-Auth-Token: "{{ bigip_token }}"
+      body: 
+        name: '{{account_name}}_resources'
+        resources:
+        - restMethod: GET
+          resourceMask: /mgmt/tm/ltm/virtual/~Common~VS2
+        - restMethod: PATCH
+          resourceMask: /mgmt/tm/ltm/virtual/~Common~VS2
+        - restMethod: GET
+          resourceMask: /mgmt/tm/ltm/virtual/VS2
+        - restMethod: PATCH
+          resourceMask: /mgmt/tm/ltm/virtual/VS2
+      validate_certs: no
+      status_code: 200, 202
+      timeout: 30
+      body_format: json
+    register: resource_group_result
+    retries: 10
+    delay: 60
+    until: 
+    - resource_group_result.status is defined
+    - resource_group_result.status != 503
+
+  - name: Create role
+      url: https://{{ ansible_host }}/mgmt/shared/authz/resource-groups
+      method: POST
+      return_content: yes
+      headers:
+          X-F5-Auth-Token: "{{ bigip_token }}"
+      body: 
+        name: '{{account_name}}_role'
+        userReferences:
+            - link: https://localhost/mgmt/cm/system/authn/providers/tmos/{{provider_id}}/users/{{user_id}}
+        resourceGroupReferences:
+            - link: https://localhost/mgmt/shared/authz/resource-groups/{{resource_id}}
+      validate_certs: no
+      status_code: 200, 202
+      timeout: 30
+      body_format: json
+    register: role_result
+    retries: 10
+    delay: 60
+    until: 
+    - role_result.status is defined
+    - role_result.status != 503
+
+  # Logout From BigIP to prevent too many active session (Max 100 is allowed by TMOS)
+  - name: Logout from bigIP
+    uri:
+      url: https://{{ bigiq }}/mgmt/shared/authz/tokens/{{ bigip_token }}
+      method: DELETE
+      headers:
+          X-F5-Auth-Token: "{{ bigip_token }}"
+      validate_certs: no
+      status_code: 200
+      timeout: 30
+      body_format: json
