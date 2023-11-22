@@ -109,6 +109,7 @@
     - api_user_patch_result.status != 503
 
   - name: Create resource group
+    uri:
       url: https://{{ ansible_host }}/mgmt/shared/authz/resource-groups
       method: POST
       return_content: yes
@@ -137,6 +138,7 @@
     - resource_group_result.status != 503
 
   - name: Create role
+    uri:
       url: https://{{ ansible_host }}/mgmt/shared/authz/resource-groups
       method: POST
       return_content: yes
