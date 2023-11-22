@@ -166,7 +166,7 @@
   # Logout From BigIP to prevent too many active session (Max 100 is allowed by TMOS)
   - name: Logout from bigIP
     uri:
-      url: https://{{ bigiq }}/mgmt/shared/authz/tokens/{{ bigip_token }}
+      url: https://{{ ansible_host }}/mgmt/shared/authz/tokens/{{ bigip_token }}
       method: DELETE
       headers:
           X-F5-Auth-Token: "{{ bigip_token }}"
