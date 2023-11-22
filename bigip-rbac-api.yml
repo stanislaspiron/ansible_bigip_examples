@@ -141,7 +141,7 @@
 
   - name: Create role
     uri:
-      url: https://{{ ansible_host }}/mgmt/shared/authz/resource-groups
+      url: https://{{ ansible_host }}/mgmt/shared/authz/roles
       method: POST
       return_content: yes
       headers:
