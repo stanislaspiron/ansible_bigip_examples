@@ -1,0 +1,132 @@
+---
+
+- name: Configure RBAC for BIGIP API
+  hosts: "{{ target }}"
+  gather_facts: no
+  serial: 1
+  connection: local
+  vars:
+    bigip_token: "{{ login_result.json.token.token }}"
+    resource_id: "{{ resource_group_result.json.id }}"
+
+  tasks:
+    # Login to BigIP and retreive token ID
+  - name: Login to BigIP
+    no_log: True
+    #debugger: always
+    uri:
+      url: https://{{ ansible_host }}/mgmt/shared/authn/login
+      method: POST
+      body: 
+        username: "{{ ansible_user }}"
+        password: "{{ ansible_password }}"
+        loginProviderName: "tmos"
+      return_content: yes
+      validate_certs: no
+      status_code: 200
+      timeout: 30
+      body_format: json
+    register: login_result
+    retries: 30
+    delay: 10
+    until: login_result.status is defined and login_result.status == 200
+    changed_when: false
+
+  # update token timeout to 1 hour
+  - name: update timeout to 1H
+    uri:
+      url: https://{{ ansible_host }}/mgmt/shared/authz/tokens/{{ bigip_token }}
+      method: PATCH
+      headers:
+          X-F5-Auth-Token: "{{ bigip_token }}"
+      body: '{"timeout":"3600"}'
+      validate_certs: no
+      status_code: 200
+      timeout: 30
+      body_format: json
+
+  - name: Delete role
+    uri:
+      url: https://{{ ansible_host }}/mgmt/shared/authz/roles/{{account_name}}_role
+      method: DELETE
+      return_content: yes
+      headers:
+          X-F5-Auth-Token: "{{ bigip_token }}"
+      validate_certs: no
+      status_code: 200, 202
+      timeout: 30
+      body_format: json
+    register: role_result
+    retries: 10
+    delay: 60
+    until: 
+    - role_result.status is defined
+    - role_result.status != 503
+
+  - name: GET Resource group
+    uri:
+      url: https://{{ ansible_host }}/mgmt/shared/authz/resource-groups
+      method: GET
+      return_content: yes
+      headers:
+          X-F5-Auth-Token: "{{ bigip_token }}"
+      validate_certs: no
+      status_code: 200, 202
+      timeout: 30
+    register: api_resource_group_result
+    retries: 10
+    delay: 60
+    until: 
+    - api_resource_group_result.status is defined
+    - api_resource_group_result.status != 503
+
+  - name: Delete resource group
+    uri:
+      url: https://{{ ansible_host }}/mgmt/shared/authz/resource-groups/{{ api_resource_group_result.json['items'] | selectattr('', 'equalto', account_name + '_resources' ) | first }}
+      method: DELETE
+      return_content: yes
+      headers:
+          X-F5-Auth-Token: "{{ bigip_token }}"
+      validate_certs: no
+      status_code: 200, 202
+      timeout: 30
+      body_format: json
+    register: resource_group_result
+    retries: 10
+    delay: 60
+    until: 
+    - resource_group_result.status is defined
+    - resource_group_result.status != 503
+
+
+  - name: Delete user
+    uri:
+      url: https://{{ ansible_host }}/mgmt/tm/auth/user/{{account_password}}
+      method: DELETE
+      return_content: yes
+      headers:
+          X-F5-Auth-Token: "{{ bigip_token }}"
+      validate_certs: no
+      status_code: 200, 202
+      timeout: 30
+      body_format: json
+    register: user_result
+    retries: 10
+    delay: 60
+    until: 
+    - user_result.status is defined
+    - user_result.status != 503
+
+
+
+  # Logout From BigIP to prevent too many active session (Max 100 is allowed by TMOS)
+  - name: Logout from bigIP
+    uri:
+      url: https://{{ ansible_host }}/mgmt/shared/authz/tokens/{{ bigip_token }}
+      method: DELETE
+      headers:
+          X-F5-Auth-Token: "{{ bigip_token }}"
+      validate_certs: no
+      status_code: 200
+      timeout: 30
+      body_format: json
