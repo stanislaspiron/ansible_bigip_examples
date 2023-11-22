@@ -55,7 +55,6 @@
       validate_certs: no
       status_code: 200, 202, 404
       timeout: 30
-      body_format: json
     register: role_result
 
   - name: GET Resource group
@@ -80,12 +79,11 @@
       validate_certs: no
       status_code: 200, 202, 404
       timeout: 30
-      body_format: json
     register: resource_group_result
 
   - name: Delete user
     uri:
-      url: https://{{ ansible_host }}/mgmt/tm/auth/user/{{account_password}}
+      url: https://{{ ansible_host }}/mgmt/tm/auth/user/{{account_name}}
       method: DELETE
       return_content: yes
       headers:
@@ -93,7 +91,6 @@
       validate_certs: no
       status_code: 200, 202, 404
       timeout: 30
-      body_format: json
     register: user_result
 
 
@@ -107,4 +104,3 @@
       validate_certs: no
       status_code: 200
       timeout: 30
-      body_format: json
