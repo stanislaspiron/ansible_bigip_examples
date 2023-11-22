@@ -147,7 +147,7 @@
       body: 
         name: '{{account_name}}_role'
         userReferences:
-            - link: https://localhost/mgmt/cm/system/authn/providers/tmos/{{provider_id}}/users/{{user_id}}
+            - link: "{{ 'https://localhost/mgmt/shared/authz/users/' + account_name }}"
         resourceGroupReferences:
             - link: https://localhost/mgmt/shared/authz/resource-groups/{{resource_id}}
       validate_certs: no
