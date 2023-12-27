@@ -180,7 +180,7 @@
       headers:
           X-F5-Auth-Token: "{{ bigip_token }}"
       body: 
-        name: {{account_name}}_resources
+        name: '{{account_name}}_resources'
         resources:
         - restMethod: GET
           resourceMask: /mgmt/tm/ltm/profile/client-ssl
