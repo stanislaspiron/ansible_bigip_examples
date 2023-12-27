@@ -6,11 +6,66 @@
   serial: 1
   connection: local
   vars:
+    user_bigip_token: "{{ user_login_result.json.token.token }}"
     bigip_token: "{{ login_result.json.token.token }}"
     resource_id: "{{ resource_group_result.json.id }}"
-
+    provider_id: "{{ provider_result.json['items'][0]['id'] }}"
+    user_id: "{{ provider_user_result.json['items'][0]['id'] }}" 
+    
   tasks:
     # Login to BigIP and retreive token ID
+  - name: Login to BigIP as user {{account_name}}
+    no_log: True
+    #debugger: always
+    uri:
+      url: https://{{ ansible_host }}/mgmt/shared/authn/login
+      method: POST
+      body: 
+        username: "{{ account_name }}"
+        password: "{{ account_password }}"
+        loginProviderName: "tmos"
+      return_content: yes
+      validate_certs: no
+      status_code: 200
+      timeout: 30
+      body_format: json
+    register: user_login_result
+    retries: 30
+    delay: 10
+    until: user_login_result.status is defined and user_login_result.status == 200
+    changed_when: false
+
+  - name: GET virtual servers to create user in API users
+    uri:
+      url: https://{{ ansible_host }}/mgmt/tm/ltm/virtual
+      method: GET
+      return_content: yes
+      headers:
+          X-F5-Auth-Token: "{{ user_bigip_token }}"
+      validate_certs: no
+      status_code: 200, 202
+      timeout: 30
+      body_format: json
+    register: user_api_result
+    retries: 10
+    delay: 60
+    until: 
+    - user_api_result.status is defined
+    - user_api_result.status != 503
+
+  # Logout From BigIP to prevent too many active session (Max 100 is allowed by TMOS)
+  - name: Logout from bigIP
+    uri:
+      url: https://{{ ansible_host }}/mgmt/shared/authz/tokens/{{ user_bigip_token }}
+      method: DELETE
+      headers:
+          X-F5-Auth-Token: "{{ user_bigip_token }}"
+      validate_certs: no
+      status_code: 200
+      timeout: 30
+      body_format: json
+
+##################################################################################
   - name: Login to BigIP
     no_log: True
     #debugger: always
@@ -45,30 +100,41 @@
       timeout: 30
       body_format: json
 
-  - name: Create user
+  - name: GET authentication provider ID
     uri:
-      url: https://{{ ansible_host }}/mgmt/tm/auth/user
-      method: POST
+      url: https://{{ ansible_host }}/mgmt/cm/system/authn/providers/tmos?$select=id
+      method: GET
       return_content: yes
       headers:
           X-F5-Auth-Token: "{{ bigip_token }}"
-      body: 
-        name: '{{account_name}}'
-        password: '{{account_password}}'
-        description: '{{account_name}}'
-        partitionAccess:
-        - name: all-partitions
-          role: certificate-manager
       validate_certs: no
       status_code: 200, 202
       timeout: 30
       body_format: json
-    register: user_result
+    register: provider_result
     retries: 10
     delay: 60
     until: 
-    - user_result.status is defined
-    - user_result.status != 503
+    - provider_result.status is defined
+    - provider_result.status != 503
+
+  - name: GET  user ID in authentication provider
+    uri:
+      url: https://{{ ansible_host }}/mgmt/cm/system/authn/providers/tmos/{{provider_id}}/users?$filter=name+eq+{{account_name}}&$select=id
+      method: GET
+      return_content: yes
+      headers:
+          X-F5-Auth-Token: "{{ bigip_token }}"
+      validate_certs: no
+      status_code: 200, 202
+      timeout: 30
+      body_format: json
+    register: provider_user_result
+    retries: 10
+    delay: 60
+    until: 
+    - provider_user_result.status is defined
+    - provider_user_result.status != 503
 
   - name: GET Resource Role iControl_REST_API_User
     uri:
@@ -96,7 +162,7 @@
       headers:
           X-F5-Auth-Token: "{{ bigip_token }}"
       body: 
-        userReferences: "{{ api_user_result.json.userReferences | rejectattr('link', 'equalto', 'https://localhost/mgmt/shared/authz/users/' + account_name) }}"
+        userReferences: "{{ api_user_result.json.userReferences | rejectattr('link', 'equalto', 'https://localhost/mgmt/cm/system/authn/providers/tmos/' + provider_id + '/users/' + user_id) }}"
         resourceGroupReferences: "{{ api_user_result.json.resourceGroupReferences }}"
         name: "{{ api_user_result.json.name }}"
       validate_certs: no
