@@ -45,7 +45,6 @@
       validate_certs: no
       status_code: 200, 202
       timeout: 30
-      body_format: json
     register: user_api_result
     retries: 10
     delay: 60
@@ -110,7 +109,6 @@
       validate_certs: no
       status_code: 200, 202
       timeout: 30
-      body_format: json
     register: provider_result
     retries: 10
     delay: 60
@@ -128,7 +126,6 @@
       validate_certs: no
       status_code: 200, 202
       timeout: 30
-      body_format: json
     register: provider_user_result
     retries: 10
     delay: 60
@@ -146,7 +143,6 @@
       validate_certs: no
       status_code: 200, 202
       timeout: 30
-      body_format: json
     register: api_user_result
     retries: 10
     delay: 60
